@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"sort"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -39,6 +40,8 @@ type Upcoming struct {
 	Title    string    `json:"title"`
 	When     time.Time `json:"when"`
 }
+
+//go:generate stringer -type=Upcoming
 
 func (u *UpcomingClient) encodeUpcoming(c Upcoming) []byte {
 	var buf bytes.Buffer
@@ -95,7 +98,22 @@ func (u *UpcomingClient) list(path string) ([]Upcoming, error) {
 	return upcomings, nil
 }
 
-func (u *UpcomingClient) List(opts ListOpts) ([]Upcoming, error) {
+type Upcomings []Upcoming
+
+func (s Upcomings) Len() int {
+	return len(s)
+}
+func (s Upcomings) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+type upcomingByDuration struct{ Upcomings }
+
+func (s *upcomingByDuration) Less(i, j int) bool {
+	return s.Upcomings[i].When.Before(s.Upcomings[j].When)
+}
+
+func (u *UpcomingClient) List(opts ListOpts) (list []Upcoming, err error) {
 	if opts.Sources != nil && len(opts.Sources) > 0 {
 		all := make([]Upcoming, 0)
 		for _, s := range opts.Sources {
@@ -105,10 +123,13 @@ func (u *UpcomingClient) List(opts ListOpts) ([]Upcoming, error) {
 			}
 			all = append(all, l...)
 		}
-		return all, nil
+		list, err = all, nil
 	} else {
-		return u.list(path.Join(u.prefix, "*"))
+		list, err = u.list(path.Join(u.prefix, "*"))
 	}
+
+	sort.Sort(sort.Reverse(&upcomingByDuration{list}))
+	return list, err
 }
 
 func (u *UpcomingClient) RemoveAll(source string) (int64, error) {
