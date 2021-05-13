@@ -41,7 +41,9 @@ type Upcoming struct {
 	When     time.Time `json:"when"`
 }
 
-//go:generate stringer -type=Upcoming
+func (u Upcoming) HumanizeDuration() string {
+	return HumanizeDuration(time.Until(u.When))
+}
 
 func (u *UpcomingClient) encodeUpcoming(c Upcoming) []byte {
 	var buf bytes.Buffer
