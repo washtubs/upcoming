@@ -18,11 +18,16 @@ type UpcomingClient struct {
 	client *redis.Client
 }
 
-func DefaultClient() *UpcomingClient {
+// Creates a new UpcomingClient (based on redis)
+// If addr is empty, the default will be used
+func NewClient(addr string) *UpcomingClient {
+	if addr == "" {
+		addr = "localhost:6379"
+	}
 	return &UpcomingClient{
 		prefix: "upcoming",
 		client: redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
+			Addr:     addr,
 			Password: "", // no password set
 			DB:       0,  // use default DB
 		}),
@@ -38,6 +43,8 @@ type Upcoming struct {
 	Source   string    `json:"source"`
 	SourceId string    `json:"sourceId"`
 	Title    string    `json:"title"`
+	// A command which can be run effectively doing the upcoming thing early instead of waiting
+	InvokeManual    string    `json:"invokeManual"`
 	When     time.Time `json:"when"`
 }
 
@@ -115,6 +122,10 @@ func (s *upcomingByDuration) Less(i, j int) bool {
 	return s.Upcomings[i].When.Before(s.Upcomings[j].When)
 }
 
+func SortByDuration(list []Upcoming) {
+	sort.Sort(sort.Reverse(&upcomingByDuration{list}))
+}
+
 func (u *UpcomingClient) List(opts ListOpts) (list []Upcoming, err error) {
 	if opts.Sources != nil && len(opts.Sources) > 0 {
 		all := make([]Upcoming, 0)
@@ -130,7 +141,7 @@ func (u *UpcomingClient) List(opts ListOpts) (list []Upcoming, err error) {
 		list, err = u.list(path.Join(u.prefix, "*"))
 	}
 
-	sort.Sort(sort.Reverse(&upcomingByDuration{list}))
+	SortByDuration(list)
 	return list, err
 }
 
@@ -191,5 +202,5 @@ func (u *UpcomingClient) Put(upcoming Upcoming) error {
 }
 
 func Format(upcoming Upcoming) string {
-	return fmt.Sprintf("%s\t%s\t%s\t%s", HumanizeDuration(time.Until(upcoming.When)), upcoming.Title, upcoming.Source, upcoming.SourceId)
+	return fmt.Sprintf("%s\t%s\t%s\t%s\t%s", HumanizeDuration(time.Until(upcoming.When)), upcoming.Title, upcoming.Source, upcoming.SourceId, upcoming.InvokeManual)
 }
