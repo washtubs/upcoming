@@ -40,12 +40,12 @@ type ListOpts struct {
 }
 
 type Upcoming struct {
-	Source   string    `json:"source"`
-	SourceId string    `json:"sourceId"`
-	Title    string    `json:"title"`
+	Source   string `json:"source"`
+	SourceId string `json:"sourceId"`
+	Title    string `json:"title"`
 	// A command which can be run effectively doing the upcoming thing early instead of waiting
-	InvokeManual    string    `json:"invokeManual"`
-	When     time.Time `json:"when"`
+	InvokeManual string    `json:"invokeManual"`
+	When         time.Time `json:"when"`
 }
 
 func (u Upcoming) HumanizeDuration() string {
@@ -197,7 +197,54 @@ func (u *UpcomingClient) Put(upcoming Upcoming) error {
 	if err != nil {
 		return errors.Wrapf(err, "Failed to set upcoming at %s", key)
 	}
+
+	channel := path.Join(u.prefix, "channel")
+	err = u.client.Publish(context.Background(), channel, key).Err()
+	if err != nil {
+		return errors.Wrapf(err, "Failed publish upcoming update for %s", key)
+	}
+
 	return nil
+
+}
+
+func (u *UpcomingClient) Get(source, sourceId string) (Upcoming, error) {
+	key := path.Join(u.prefix, source, sourceId)
+	res, err := u.client.Get(context.Background(), key).Result()
+	if err != nil {
+		return Upcoming{}, errors.Wrapf(err, "Failed to obtain objects at key: %+v", key)
+	}
+	return u.decodeUpcoming(res), nil
+}
+
+// Waits for an upcoming watching the backend in case it is updated externally
+// The most recent upcoming record will be returned after Wait elapses.
+func (u *UpcomingClient) Wait(ctx context.Context, upcoming Upcoming) (Upcoming, error) {
+	ps := u.client.Subscribe(ctx, path.Join(u.prefix, "channel"))
+	defer ps.Close()
+	key := path.Join(u.prefix, upcoming.Source, upcoming.SourceId)
+	ticker := time.NewTicker(time.Until(upcoming.When))
+	for {
+		select {
+		case <-ctx.Done():
+			return upcoming, errors.New("Context cancelled while waiting")
+		case <-ticker.C:
+			return upcoming, nil
+		case m := <-ps.Channel():
+			// The record has been updated externally. Wait for the new time.
+			if m.Payload != key {
+				continue
+			}
+
+			res, err := u.client.Get(context.Background(), key).Result()
+			if err != nil {
+				return upcoming, errors.Wrapf(err, "Failed to obtain objects at key: %+v", key)
+			}
+			upcoming = u.decodeUpcoming(res)
+			ticker.Stop()
+			ticker = time.NewTicker(time.Until(upcoming.When))
+		}
+	}
 
 }
 
