@@ -83,6 +83,7 @@ func (r *UpcomingClient) decodeUpcomingBuf(buf []byte) Upcoming {
 }
 
 func (u *UpcomingClient) list(path string) ([]Upcoming, error) {
+
 	keys, err := u.client.Keys(context.Background(), path).Result()
 	if err != nil {
 		if err == redis.Nil {
@@ -139,6 +140,17 @@ func (u *UpcomingClient) List(opts ListOpts) (list []Upcoming, err error) {
 		list, err = all, nil
 	} else {
 		list, err = u.list(path.Join(u.prefix, "*"))
+	}
+
+	filtered := make([]Upcoming, 0)
+	if opts.Within != 0 {
+		until := time.Now().Add(opts.Within)
+		for _, v := range list {
+			if v.When.Before(until) {
+				filtered = append(filtered, v)
+			}
+		}
+		list = filtered
 	}
 
 	SortByDuration(list)

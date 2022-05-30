@@ -20,6 +20,8 @@ type Upcoming struct {
 	InvokeManual string
 	When         time.Time
 }
+
+func (u Upcoming) HumanizeDuration() string
 `
 
 func main() {
@@ -34,13 +36,31 @@ func main() {
 			addresses string
 			sources   string
 			format    string
+			within    string
 		)
 		fs.StringVar(&addresses, "addresses", "", "Comma separated list of server addresses")
 		fs.StringVar(&sources, "sources", "", "Comma separated list of sources")
 		fs.StringVar(&format, "format", "", fmt.Sprintf("Format string. Reference: %s", formatStringReference))
+		fs.StringVar(&within, "within", "", "List only entries within a time from now. Can also be \"today\"")
 		err := fs.Parse(flag.Args()[1:])
 		if err != nil {
 			log.Fatal(err)
+		}
+
+		var withinDuration time.Duration
+		if within != "" {
+			if within == "today" {
+				now := time.Now()
+				year, month, day := now.Date()
+				midnightLocal := time.Date(year, month, day, 0, 0, 0, 0, now.Location()).Add(24 * time.Hour)
+				withinDuration = time.Until(midnightLocal)
+			} else {
+				withinDuration, err = time.ParseDuration(within)
+				if err != nil {
+					fs.Usage()
+					log.Fatal(err)
+				}
+			}
 		}
 
 		all := make([]upcoming.Upcoming, 0)
@@ -48,6 +68,7 @@ func main() {
 			client := upcoming.NewClient(addr)
 			list, err := client.List(upcoming.ListOpts{
 				Sources: strings.Split(sources, ","),
+				Within:  withinDuration,
 			})
 			all = append(all, list...)
 			if err != nil {
