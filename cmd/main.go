@@ -43,6 +43,23 @@ func main() {
 			fmt.Println(upcoming.Format(v))
 		}
 	} else if action == "rm" {
+		var (
+			address  string
+			source   string
+			sourceId string
+		)
+		fs := flag.NewFlagSet("rm", flag.ExitOnError)
+		fs.StringVar(&source, "source", "", "Remove all for a given source")
+		fs.StringVar(&sourceId, "id", "", "Remove the given source ID")
+		fs.StringVar(&address, "address", "", "Server address")
+
+		client := upcoming.NewClient(address)
+		if sourceId != "" {
+			client.Remove(source, sourceId)
+		} else {
+			client.RemoveAll(source)
+		}
+
 	} else if action == "debug" {
 
 		d, err := time.ParseDuration("200h")
